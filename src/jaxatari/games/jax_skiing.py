@@ -3,6 +3,8 @@ import pygame
 import chex
 import jax
 import jax.numpy as jnp
+import jaxatari.rendering.atraJaxis as aj
+from jaxatari.renderers import AtraJaxisRenderer
 from dataclasses import dataclass
 from typing import Tuple, NamedTuple
 import random
