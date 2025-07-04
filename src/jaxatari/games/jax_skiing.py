@@ -585,8 +585,9 @@ class RenderConfig:
 class GameRenderer(AtraJaxisRenderer):
     """Vectorized JAX renderer for the skiing game."""
 
-    def __init__(self):
+    def __init__(self, base_renderer: AtraJaxisRenderer):
         super().__init__()
+        self.base_renderer = base_renderer
         module_dir = os.path.dirname(os.path.abspath(__file__))
         sprite_dir = os.path.join(module_dir, "sprites", "skiing")
 
@@ -720,7 +721,8 @@ def main():
         # Initialize game and renderer
         game = JaxSkiing()
         _, state = game.reset()
-        renderer = GameRenderer()
+        atra_renderer = AtraJaxisRenderer()
+        renderer = GameRenderer(atra_renderer)
 
         pygame.init()
         screen = pygame.display.set_mode(
