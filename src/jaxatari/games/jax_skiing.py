@@ -404,10 +404,14 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo]):
         collisions_tree = jax.vmap(check_collision_tree)(jnp.array(new_trees))
         collisions_rocks = jax.vmap(check_collision_rock)(jnp.array(new_rocks))
 
-        num_colls = (
+        num_colls_pre = (
             jnp.sum(collisions_tree)
             + jnp.sum(collisions_rocks)
             + jnp.sum(collisions_flag)
+        )
+
+        collision_occurred = jnp.logical_and(
+            jnp.greater(num_colls_pre, 0), jnp.equal(state.skier_fell, 0)
         )
 
         # Bestimme, wodurch die erste Kollision verursacht wurde
@@ -452,7 +456,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo]):
             lambda _: (
                 new_x,
                 state.skier_fell,
-                num_colls,
+                num_colls_pre,
                 new_flags,
                 new_trees,
                 new_rocks,
@@ -460,6 +464,18 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo]):
                 new_skier_x_speed,
                 new_skier_y_speed,
             ),
+            operand=None,
+        )
+
+        # Apply small knockback when colliding with an obstacle
+        new_x = jax.lax.cond(
+            collision_occurred,
+            lambda _: jnp.clip(
+                new_x - 5.0,
+                self.config.skier_width / 2,
+                self.config.screen_width - self.config.skier_width / 2,
+            ),
+            lambda _: new_x,
             operand=None,
         )
 
@@ -476,6 +492,8 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo]):
             lambda _: state.score,
             operand=None,
         )
+        penalty = jax.lax.select(collision_occurred, jnp.array(1), jnp.array(0))
+        new_score = new_score - penalty
         game_over = jax.lax.cond(
             jnp.equal(new_score, 0),
             lambda _: jnp.array(True),
@@ -906,14 +924,6 @@ def main():
             obs, state, reward, done, info = game.step(state, action)
             renderer.render(state)
 
-            if state.skier_fell > 0 and state.collision_type in (1, 2):  # Nur Baum oder Stein
-                # Trigger popup on collision
-                result = show_game_over_popup(renderer.screen, render_config.scale_factor)
-                if result == "restart":
-                    running = False  # Exit inner loop to restart
-                elif result == "quit":
-                    pygame.quit()
-                    return
 
             clock.tick(60)
 
