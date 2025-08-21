@@ -409,11 +409,14 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
             new_rocks = state.rocks.at[:, 1].add(-new_skier_y_speed)
             new_flags = state.flags.at[:, 1].add(-new_skier_y_speed)
 
-            def check_pass_flag(flag_pos):
-                fx, fy = flag_pos
-                dx_0 = new_x - fx
-                dy_0 = jnp.abs(self.config.skier_y - jnp.round(fy))
-                return (dx_0 > 0) & (dx_0 < self.config.flag_distance) & (dy_0 < 1)
+            def check_pass_gate(old_pos, new_pos):
+                fx, fy_old = old_pos
+                fy_new = new_pos[1]
+                between = (new_x > fx) & (new_x < fx + self.config.flag_distance)
+                crossed = (fy_old >= self.config.skier_y) & (
+                    fy_new < self.config.skier_y
+                )
+                return between & crossed
 
             def check_collision_flag(obj_pos, x_distance=1, y_distance=1):
                 x, y = obj_pos
@@ -447,7 +450,8 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
                 )
 
             # Check if gates have been passed before respawn
-            passed_flags = jax.vmap(check_pass_flag)(jnp.array(new_flags))
+            passed_flags = jax.vmap(check_pass_gate)(state.flags, jnp.array(new_flags))
+            new_passes = jnp.logical_and(passed_flags, jnp.logical_not(state.flags_passed))
             flags_passed = state.flags_passed | passed_flags
 
             # Determine which flags despawn this frame (y < TOP_BORDER)
@@ -553,7 +557,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
 
             new_score = jax.lax.cond(
                 jnp.equal(skier_fell, 0),
-                lambda _: state.score - jnp.sum(passed_flags),
+                lambda _: state.score - jnp.sum(new_passes),
                 lambda _: state.score,
                 operand=None,
             )
