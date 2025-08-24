@@ -446,9 +446,19 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
                     jnp.logical_not(jumping),  # This ensures no collision when jumping
                 )
 
-            # Check if gates have been passed before respawn
-            passed_flags = jax.vmap(check_pass_flag)(jnp.array(new_flags))
-            flags_passed = state.flags_passed | passed_flags
+            # Check if gates have been passed before respawn. ``check_pass_flag``
+            # returns True whenever the skier's x-position lies strictly between
+            # the left and right posts of a gate at the exact frame the gate's
+            # y-coordinate crosses the skier.  This is evaluated for every gate
+            # each frame.  To avoid awarding multiple points for the same gate
+            # (e.g. when passing diagonally and touching both posts on
+            # successive frames), we only score gates that transition from not
+            # yet passed to passed in this step.
+            current_passed = jax.vmap(check_pass_flag)(jnp.array(new_flags))
+            passed_flags = jnp.logical_and(
+                current_passed, jnp.logical_not(state.flags_passed)
+            )
+            flags_passed = jnp.logical_or(state.flags_passed, current_passed)
 
             # Determine which flags despawn this frame (y < TOP_BORDER)
             despawn_mask = new_flags[:, 1] < TOP_BORDER
