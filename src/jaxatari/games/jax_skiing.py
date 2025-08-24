@@ -83,7 +83,7 @@ class GameState(NamedTuple):
     jumping: chex.Array  # Is the skier currently jumping?
     jump_timer: chex.Array  # Frames left in current jump
     collision_type: chex.Array  # 0 = keine, 1 = Baum, 2 = Stein, 3 = Flagge
-    flags_passed: chex.Array
+    gate_passed: chex.Array
 
 
 class EntityPosition(NamedTuple):
@@ -183,7 +183,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
             jumping=jnp.array(False),
             jump_timer=jnp.array(0),
             collision_type=jnp.array(0),
-            flags_passed=jnp.zeros(self.config.max_num_flags, dtype=bool),
+            gate_passed=jnp.zeros(self.config.max_num_flags, dtype=bool),
         )
         obs = self._get_observation(state)
 
@@ -324,9 +324,9 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
                 operand=None,
             )
             # Keine Bewegung, keine Punkteänderung, keine Objektbewegung
-            flags_passed = (
-                state.flags_passed
-            )  # Fix: Use the existing flags_passed from state
+            gate_passed = (
+                state.gate_passed
+            )  # Preserve per-gate pass state
             new_state = GameState(
                 skier_x=state.skier_x,
                 skier_pos=state.skier_pos,
@@ -344,7 +344,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
                 jumping=state.jumping,
                 jump_timer=state.jump_timer,
                 collision_type=state.collision_type,
-                flags_passed=flags_passed,
+                gate_passed=gate_passed,
             )
             obs = self._get_observation(new_state)
             info = self._get_info(new_state)
@@ -409,7 +409,10 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
             new_rocks = state.rocks.at[:, 1].add(-new_skier_y_speed)
             new_flags = state.flags.at[:, 1].add(-new_skier_y_speed)
 
-            def check_pass_flag(flag_pos):
+            # Detect if the skier crosses the gate between the two posts.
+            # ``flag_pos`` stores the left post position; the right post is
+            # ``left_x + flag_distance``.
+            def check_pass_gate(flag_pos):
                 fx, fy = flag_pos
                 dx_0 = new_x - fx
                 dy_0 = jnp.abs(self.config.skier_y - jnp.round(fy))
@@ -446,20 +449,23 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
                     jnp.logical_not(jumping),  # This ensures no collision when jumping
                 )
 
-            # Check if gates have been passed before respawn
-            passed_flags = jax.vmap(check_pass_flag)(jnp.array(new_flags))
-            flags_passed = state.flags_passed | passed_flags
+            # Check if gates have been passed and ensure each scores once
+            passed_gates = jax.vmap(check_pass_gate)(jnp.array(new_flags))
+            new_passes = jnp.logical_and(
+                jnp.logical_not(state.gate_passed), passed_gates
+            )
+            gate_passed = state.gate_passed | new_passes
 
             # Determine which flags despawn this frame (y < TOP_BORDER)
             despawn_mask = new_flags[:, 1] < TOP_BORDER
             missed_penalty_mask = jnp.logical_and(
-                despawn_mask, jnp.logical_not(flags_passed)
+                despawn_mask, jnp.logical_not(gate_passed)
             )
             missed_penalty_count = jnp.sum(missed_penalty_mask)
             missed_penalty = missed_penalty_count * 300
 
-            # Reset flags_passed when a flag despawns
-            flags_passed = jnp.where(despawn_mask, False, flags_passed)
+            # Reset gate_passed when a gate despawns
+            gate_passed = jnp.where(despawn_mask, False, gate_passed)
 
             # Spawn new objects after calculating penalties
             new_flags, new_trees, new_rocks, new_key = self._create_new_objs(
@@ -553,7 +559,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
 
             new_score = jax.lax.cond(
                 jnp.equal(skier_fell, 0),
-                lambda _: state.score - jnp.sum(passed_flags),
+                lambda _: state.score - jnp.sum(new_passes),
                 lambda _: state.score,
                 operand=None,
             )
@@ -589,7 +595,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, None]):
                 jumping=jumping,
                 jump_timer=jump_timer,
                 collision_type=collision_type,
-                flags_passed=flags_passed,  # <--- Argument ergänzt
+                gate_passed=gate_passed,
             )
 
             done = self._get_done(new_state)
