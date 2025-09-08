@@ -135,19 +135,20 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingC
         return spaces.Box(low=0, high=255, shape=(c.screen_height, c.screen_width, 3), dtype=jnp.uint8)
 
     def obs_to_flat_array(self, obs: SkiingObservation) -> jnp.ndarray:
-        # --- CHANGED: return flattened float64
+        # alles als float64
         skier_vec  = jnp.array(
             [obs.skier.x, obs.skier.y, obs.skier.width, obs.skier.height],
-            dtype=jnp.float32
+            dtype=jnp.float64
         ).reshape(-1)
-    
-        flags_flat = jnp.asarray(obs.flags, dtype=jnp.float32).reshape(-1)
-        trees_flat = jnp.asarray(obs.trees, dtype=jnp.float32).reshape(-1)
-        rocks_flat = jnp.asarray(obs.rocks, dtype=jnp.float32).reshape(-1)
-        # Score is int32; keep as float64 in flat vector for consistency
-        score_flat = jnp.asarray(obs.score, dtype=jnp.float32).reshape(-1)
-    
+
+        flags_flat = jnp.asarray(obs.flags, dtype=jnp.float64).reshape(-1)
+        trees_flat = jnp.asarray(obs.trees, dtype=jnp.float64).reshape(-1)
+        rocks_flat = jnp.asarray(obs.rocks, dtype=jnp.float64).reshape(-1)
+        # Score ebenfalls in die flache Darstellung als float64 konvertieren
+        score_flat = jnp.asarray(obs.score, dtype=jnp.float64).reshape(-1)
+
         return jnp.concatenate([skier_vec, flags_flat, trees_flat, rocks_flat, score_flat], axis=0)
+
 
     def reset(self, key: jax.random.PRNGKey = jax.random.key(1701)) -> Tuple[SkiingObservation, GameState]:
         """Initialize a new game state deterministically from `key`."""
