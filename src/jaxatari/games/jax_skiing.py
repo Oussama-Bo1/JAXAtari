@@ -326,19 +326,22 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingC
         skier_pos = jnp.clip(new_skier_pos, 0, 7)
 
         # Entprellung beibehalten
+        skier_pos = jnp.clip(new_skier_pos, jnp.int32(0), jnp.int32(7))
+
         skier_pos, direction_change_counter = jax.lax.cond(
             jnp.greater(state.direction_change_counter, 0),
-            lambda _: (state.skier_pos, state.direction_change_counter - 1),
-            lambda _: (skier_pos, jnp.array(0)),
+            lambda _: (state.skier_pos, state.direction_change_counter - jnp.int32(1)),
+            lambda _: (skier_pos, jnp.int32(0)),
             operand=None,
         )
         direction_change_counter = jax.lax.cond(
             jnp.logical_and(jnp.not_equal(skier_pos, state.skier_pos),
-                            jnp.equal(direction_change_counter, 0)),
-            lambda _: jnp.array(16),
+                            jnp.equal(direction_change_counter, jnp.int32(0))),
+            lambda _: jnp.int32(16),
             lambda _: direction_change_counter,
             operand=None,
         )
+
 
         # 2) Basisgeschwindigkeiten
         dx_target = side_speed.at[skier_pos].get()
@@ -495,16 +498,17 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingC
                                  lambda _: jnp.array(True),
                                  lambda _: jnp.array(False),
                                  operand=None)
+        # besser
         new_time = jax.lax.cond(
-            jnp.greater(state.time, 9223372036854775807 / 2),
-            lambda _: jnp.array(0, dtype=jnp.int32),
-            lambda _: state.time + 1 + missed_penalty,
+            jnp.greater(state.time, 9223372036854775807 // 2),  # oder kleinerer Grenzwert in int32
+            lambda _: jnp.int32(0),
+            lambda _: state.time + jnp.int32(1) + missed_penalty,
             operand=None,
         )
 
         new_state = GameState(
             skier_x=new_x,
-            skier_pos=jnp.array(skier_pos),
+            skier_pos=jnp.asarray(skier_pos, dtype=jnp.int32),
             skier_fell=new_skier_fell,
             skier_x_speed=new_skier_x_speed,
             skier_y_speed=new_skier_y_speed,
@@ -764,7 +768,7 @@ def render_frame(
 
     # 3) Skier-Sprite auswählen (links/front/rechts; „fallen“ hat Vorrang)
     # mapping wie bisher: 0..2 = left, 3..4 = front, 5..7 = right
-    pos = jnp.clip(state.skier_pos, 0, 7)
+    pos = jnp.clip(state.skier_pos, jnp.int32(0), jnp.int32(7))
   
     skier_base = jax.lax.cond(
         pos <= 2,
