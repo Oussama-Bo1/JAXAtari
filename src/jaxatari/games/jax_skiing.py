@@ -2,6 +2,8 @@ from functools import partial
 import pygame
 import chex
 import jax
+from jax import config as jax_config
+jax_config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import jax.image as jimage
 from dataclasses import dataclass
